@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Best Practice EMR Cluster for Spark or S3 backed Hbase
+Parameters:
+  EMRClusterName:
+    Description: Name of the cluster
+    Type: String
+    Default: emrcluster
+  KeyName:
+    Description: Must be an existing Keyname
+    Default: test
+    Type: String
+  MasterInstanceType:
+    Description: Instance type to be used for the master instance.
+    Type: String
+    Default: m3.xlarge
+  CoreInstanceType:
+    Description: Instance type to be used for core instances.
+    Type: String
+    Default: m3.xlarge
+  NumberOfCoreInstances:
+    Description: Must be a valid number
+    Type: Number
+    Default: 2
+  SubnetID:
+    Description: Must be Valid public subnet ID
+    Default: subnet-0eb2f6d9edad31263
+    Type: String
+  LogBucketEMR:
+    Description: Must be unique
+    Default: 'spark-logs-bucket-1231633643'
+    Type: String
+  DataBuckerEMR:
+    Description: 'Data bucket'
+    Default: 'spark-data-552134'
+    Type: String
+  ReleaseLabel:
+    Description: Must be a valid EMR release  version
+    Default: emr-6.1.0
+    Type: String
+  Applications:
+    Description: >-
+      Please select which application will be installed on the cluster this
+      would be either Ganglia and spark, or Ganglia and s3 acked Hbase
+    Type: String
+    Default: Spark
+Resources:
+  S3DataBuckerEMR:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join
+                    - "-"
+                    - - !Ref DataBuckerEMR
+                      - !Select
+                        - 0
+                        - !Split
+                          - "-"
+                          - !Select
+                            - 2
+                            - !Split
+                              - "/"
+                              - !Ref "AWS::StackId"
+  S3LogBuckerEMR:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join
+                    - "-"
+                    - - !Ref LogBucketEMR
+                      - !Select
+                        - 0
+                        - !Split
+                          - "-"
+                          - !Select
+                            - 2
+                            - !Split
+                              - "/"
+                              - !Ref "AWS::StackId"
+  EMRCluster:
+    Type: 'AWS::EMR::Cluster'
+    DependsOn:
+      - S3DataBuckerEMR
+      - S3LogBuckerEMR
+    Properties:
+      Applications:
+        - Name: Ganglia
+        - Name: Spark
+      Configurations:
+        - Classification: hbase-site
+          ConfigurationProperties:
+            hbase.rootdir: !Join
+                              - ''
+                              - - 's3://'
+                                - !Ref S3DataBuckerEMR
+                                - '/'
+        - Classification: hbase
+          ConfigurationProperties:
+            hbase.emr.storageMode: s3
+      Instances:
+        Ec2KeyName: !Ref KeyName
+        Ec2SubnetId: !Ref SubnetID
+        MasterInstanceGroup:
+          InstanceCount: 1
+          InstanceType: !Ref MasterInstanceType
+          Market: ON_DEMAND
+          Name: Master
+        CoreInstanceGroup:
+          InstanceCount: !Ref NumberOfCoreInstances
+          InstanceType: !Ref CoreInstanceType
+          Market: ON_DEMAND
+          Name: Core
+        TerminationProtected: false
+      VisibleToAllUsers: true
+      JobFlowRole: EMR_EC2_DefaultRole
+      ReleaseLabel: !Ref ReleaseLabel
+      LogUri: !Join
+                - ''
+                - - 's3://'
+                  - !Ref S3LogBuckerEMR
+                  - '/'
+      Name: !Ref EMRClusterName
+      AutoScalingRole: EMR_AutoScaling_DefaultRole
+      ServiceRole: EMR_DefaultRole
+
+Outputs:
+  S3LogBuckerEMR:
+    Description: Bucket for spark logs.
+    Value: !Ref S3LogBuckerEMR
+  S3DataBuckerEMR:
+    Description: Bucket for spark logs.
+    Value: !Ref S3DataBuckerEMR
+
